@@ -45,7 +45,7 @@ Initialize Tauri v2 + React + TypeScript project with all dependencies.
 - `notify` 8 + `notify-debouncer-full` 0.7 — file watching (infrastructure only in Phase 1)
 - `thiserror` — error types
 - `serde` + `serde_json` — serialization
-- `tokio` 1 — async runtime (Tauri v2 already provides tokio; only add if needed for specific features, no full features)
+- `tokio` 1 — **NOT added in Phase 1.** Tauri v2 already provides a tokio runtime. Phase 1 commands are synchronous (no async needed). Add tokio to Cargo.toml only if a future phase requires explicit async work.
 
 ### Commands
 ```bash
@@ -124,7 +124,7 @@ SQLite schema, migrations, connection management.
 **Migrations (V1):**
 Full schema from design doc:
 - `libraries` table
-- `items` table + indexes (library_id, file_type, rating, created_at, sha256)
+- `items` table + indexes (library_id, file_type, rating, created_at, sha256), UNIQUE(library_id, file_path) constraint to prevent duplicate imports at DB level
 - `folders`, `item_folders` tables
 - `smart_folders` table
 - `thumbnails` table
@@ -173,7 +173,7 @@ pub fn generate_thumbnail(
 
 - Opens image with `image::open()`
 - Uses `imageops::thumbnail()` for fast downscaling
-- Outputs JPEG via `DynamicImage::write_to(..., ImageFormat::Jpeg)` with quality 85
+- Outputs JPEG via `JpegEncoder::new_with_quality(writer, 85)` (note: `DynamicImage::write_to` does not support custom quality; must use `JpegEncoder` directly with a `Cursor<Vec<u8>>` buffer, then write buffer to file)
 - Saves to `thumb_dir/{item_id}.jpg`
 - Creates `thumb_dir` if not exists
 
@@ -222,7 +222,7 @@ pub fn import_directory(
 
 **Phase 1 constraints:**
 - Copy mode only (no move/reference)
-- No progress reporting yet (add Channel in Phase 2)
+- Progress reporting via `std::sync::mpsc::channel` — returns progress count after import completes. Real-time streaming via Tauri events deferred to Phase 2.
 - Skip duplicates silently (dialog comes in Phase 3)
 
 ### Tests
@@ -286,13 +286,19 @@ Expose Rust functions as Tauri commands callable from frontend.
 #[tauri::command] fn create_library(name: String, path: String, state: State<'_, DbState>) -> Result<Library, AppError>
 #[tauri::command] fn open_library(path: String, state: State<'_, DbState>) -> Result<Library, AppError>
 #[tauri::command] fn list_libraries(state: State<'_, DbState>) -> Result<Vec<Library>, AppError>
-#[tauri::command] fn import_files(library_id: String, source_path: String, state: State<'_, DbState>) -> Result<ImportResult, AppError>
+#[tauri::command] fn import_files(library_id: String, source_path: String, state: State<'_, DbState>) -> Result<ImportResult, AppError>  // Phase 1 simplified: single source_path, copy mode only. Design doc signature (sources: Vec<String>, mode: ImportMode, options: ImportOptions) deferred to Phase 3.
 #[tauri::command] fn query_items(library_id: String, filter: ItemFilter, sort: SortSpec, page: Pagination, state: State<'_, DbState>) -> Result<ItemPage, AppError>
 #[tauri::command] fn get_item_detail(item_id: String, state: State<'_, DbState>) -> Result<Item, AppError>
 #[tauri::command] fn delete_items(item_ids: Vec<String>, permanent: bool, state: State<'_, DbState>) -> Result<(), AppError>
-#[tauri::command] fn get_thumbnail_path(item_id: String, size: ThumbnailSize, state: State<'_, DbState>) -> Result<String, AppError>
+#[tauri::command] fn get_thumbnail(item_id: String, size: ThumbnailSize, state: State<'_, DbState>) -> Result<String, AppError>  // returns local file path; frontend converts via convertFileSrc()
 #[tauri::command] fn search_items(library_id: String, query: String, limit: i32, state: State<'_, DbState>) -> Result<Vec<SearchResult>, AppError>
+#[tauri::command] fn get_folders(library_id: String, state: State<'_, DbState>) -> Result<Vec<Folder>, AppError>  // flat list for sidebar; tree nesting deferred to Phase 2
 ```
+
+**Deferred to later phases (defined in design doc but not Phase 1):**
+- `get_system_stats` → Phase 2 (needs stats aggregation logic)
+- `get_folder_tree` → Phase 2 (replaces flat `get_folders` with tree structure)
+- `update_item`, `save_smart_folder`, `get_all_tags` → Phase 2/3
 
 Each command:
 - Takes `State<'_, DbState>` parameter
@@ -326,7 +332,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             create_library, open_library, list_libraries,
             import_files, query_items, get_item_detail,
-            delete_items, get_thumbnail_path, search_items,
+            delete_items, get_thumbnail, search_items, get_folders,
         ])
         .run(tauri::generate_context!())
         .expect("error running Shark");
@@ -448,7 +454,7 @@ The main grid with virtual scrolling, thumbnail loading, selection.
 
 **AssetCard.tsx:**
 - `React.memo` wrapped
-- Shows thumbnail via `convertFileSrc(thumbPath)`
+- Shows thumbnail via `convertFileSrc(thumbPath)` (import from `@tauri-apps/api/core` in Tauri v2, NOT from `@tauri-apps/api`)
 - Click → select (single, Ctrl+click multi, Shift+click range)
 - Double-click → open viewer
 - Shows file name below thumbnail
@@ -474,7 +480,7 @@ Full-screen single image viewer.
 
 ### Details
 - Modal overlay (z-50, bg-black)
-- Loads original file via `convertFileSrc(item.file_path)`
+- Loads original file via `convertFileSrc(item.file_path)` (import from `@tauri-apps/api/core`)
 - Left/Right arrow keys navigate prev/next in current item list
 - Escape closes viewer
 - Shows file name + dimensions at bottom
@@ -496,7 +502,7 @@ End-to-end import UX with progress feedback.
 
 ### Details
 - ImportButton: open folder dialog → invoke `import_files`
-- ImportProgress: overlay showing "Importing... X/Y files"
+- ImportProgress: show loading spinner/overlay during import (Phase 1 shows a simple "Importing..." state; real-time X/Y progress requires Tauri events, deferred to Phase 2)
 - On complete: refresh itemStore, show toast "Imported N items"
 - Error handling: show error message if import fails
 
@@ -552,7 +558,7 @@ Step 1 (scaffold)
 | 1. Scaffold | 6 | Low | Tauri v2 CLI compatibility |
 | 2. Error+Models | 2 | Low | None |
 | 3. DB Layer | 1 | Medium | FTS5 trigger correctness |
-| 4. Thumbnails | 1 | Medium | JPEG quality vs file size tradeoff |
+| 4. Thumbnails | 1 | Medium | JpegEncoder quality API correctness |
 | 5. Importer | 1 | High | Rayon + Mutex contention |
 | 6. Search | 1 | Medium | FTS5 query correctness |
 | 7. Commands | 1 | Low | Boilerplate |

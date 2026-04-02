@@ -79,6 +79,7 @@ CREATE INDEX idx_items_file_type ON items(file_type);
 CREATE INDEX idx_items_rating ON items(rating);
 CREATE INDEX idx_items_created_at ON items(created_at);
 CREATE INDEX idx_items_sha256 ON items(sha256);
+CREATE UNIQUE INDEX idx_items_library_path ON items(library_id, file_path);
 
 CREATE TABLE smart_folders (
     id TEXT PRIMARY KEY,
@@ -279,7 +280,7 @@ Thumbnails and original images are served via Tauri's asset protocol (`convertFi
 }
 ```
 
-For production, scope should be restricted to library paths only. The frontend uses `convertFileSrc()` from `@tauri-apps/api` to generate accessible URLs for local file paths.
+For production, scope should be restricted to library paths only. The frontend uses `convertFileSrc()` from `@tauri-apps/api/core` (Tauri v2 path, not `@tauri-apps/api`) to generate accessible URLs for local file paths.
 
 ## Error Handling & Data Integrity
 
