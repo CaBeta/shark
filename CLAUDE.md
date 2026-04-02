@@ -59,11 +59,13 @@ Five Zustand stores split by scope. Persisted stores use localStorage. Component
 ### Key Design Decisions
 
 - **Schema versioning via `PRAGMA user_version`** — no separate schema_version table. Built-in SQLite mechanism, simpler and battle-tested.
+- **No `library_id` in per-library tables** — each metadata.db is self-contained, so items/folders/smart_folders don't need a library_id column. IPC commands still accept `library_id` as a routing parameter to select which DB connection to use.
 - **Tags stored as comma-separated TEXT** in items table (not normalized) — avoids JOINs for grid display, FTS5 indexes directly. Migration path to `tags` + `item_tags` tables exists for when tag analytics is needed.
 - **Smart folder rules** stored as JSON, parsed to parameterized SQL in Rust. Field names validated against an allowlist — never interpolate user input into SQL.
 - **Thumbnail two-tier system**: 256px generated at import time for grid, 1024px generated on-demand for viewer. JPEG format (image crate does not support lossy WebP encoding). LRU eviction at 2GB per tier.
 - **FTS5 content=items constraint**: items table must NOT use WITHOUT ROWID or be rebuilt (DROP+CREATE), as this corrupts the FTS index.
 - **Dedup via SHA256** content hash computed in rayon thread pool during import.
+- **DbState dual-connection architecture** — `registry: Mutex<Connection>` (always connected to `~/.shark/registry.db`) + `library: Mutex<Option<Connection>>` (connected to active library's `metadata.db`). Registry operations never block during library switches.
 
 ## Testing
 

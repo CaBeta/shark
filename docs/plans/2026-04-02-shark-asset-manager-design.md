@@ -50,9 +50,23 @@ Shark uses a **global registry database** + **per-library databases** approach:
 - **Global registry DB** (`~/.shark/registry.db`): Stores the `libraries` table — a catalog of all registered libraries (name, path). Managed by the app-level `DbState`.
 - **Per-library DB** (`<library_path>/.shark/metadata.db`): Stores all library-specific data — `items`, `folders`, `smart_folders`, `thumbnails`, `items_fts`, etc. When a library is opened, the app switches the active DB connection to that library's `metadata.db`.
 
-This means `items.library_id` is used for filtering within a single-library context, not for cross-library JOINs. Each library's DB is self-contained.
+### DbState Connection Management
 
-> **Schema note:** The `libraries` table exists in the global registry DB only. Per-library DBs contain `items`, `folders`, `smart_folders`, `thumbnails`, and `items_fts`. The `items.library_id` field is retained as a simple text identifier (no foreign key to `libraries`) since the per-library DB has no `libraries` table.
+```rust
+struct DbState {
+    registry: Mutex<Connection>,    // Always connected to ~/.shark/registry.db
+    library: Mutex<Option<Connection>>,  // Connected to active library's metadata.db, or None
+}
+```
+
+- **Registry connection** is established at startup and never replaced. Commands like `list_libraries`, `create_library` use this connection.
+- **Library connection** is `None` until `open_library` is called, then set to the library's `metadata.db`. Switching libraries replaces this connection.
+- **Thread safety:** Each connection is behind its own `Mutex`. The registry Mutex is never contended during a library switch — commands targeting the registry (e.g., `list_libraries`) can run concurrently with library operations. A library switch (replacing `library`) only blocks other library-scoped commands, not registry commands.
+- **IPC `library_id` parameter:** Commands that operate on library data (e.g., `query_items`, `search_items`) take `library_id` to identify which library DB to use. This parameter is used for routing only — it is NOT stored in per-library tables.
+
+Each library's DB is self-contained. Since every record in a per-library DB inherently belongs to that library, per-library tables (`items`, `folders`, `smart_folders`) do NOT include a `library_id` column. The IPC layer still takes `library_id` as a parameter to identify which DB connection to use, but the value is not stored in each row.
+
+> **Schema note:** The `libraries` table exists in the global registry DB only. Per-library DBs contain `items`, `folders`, `smart_folders`, `thumbnails`, and `items_fts` — all without `library_id` columns.
 
 ### SQLite Schema
 
@@ -68,7 +82,6 @@ CREATE TABLE libraries (
 -- Per-library DB (metadata.db)
 CREATE TABLE items (
     id TEXT PRIMARY KEY,
-    library_id TEXT NOT NULL,  -- identifier for filtering; no FK (libraries table is in global DB)
     file_path TEXT NOT NULL,
     file_name TEXT NOT NULL,
     file_size INTEGER,
@@ -87,16 +100,14 @@ CREATE TABLE items (
 );
 
 -- High-frequency query indexes
-CREATE INDEX idx_items_library_id ON items(library_id);
 CREATE INDEX idx_items_file_type ON items(file_type);
 CREATE INDEX idx_items_rating ON items(rating);
 CREATE INDEX idx_items_created_at ON items(created_at);
 CREATE INDEX idx_items_sha256 ON items(sha256);
-CREATE UNIQUE INDEX idx_items_library_path ON items(library_id, file_path);
+CREATE UNIQUE INDEX idx_items_file_path ON items(file_path);
 
 CREATE TABLE smart_folders (
     id TEXT PRIMARY KEY,
-    library_id TEXT NOT NULL,  -- no FK (libraries table is in global DB)
     name TEXT NOT NULL,
     rules TEXT NOT NULL,   -- JSON-serialized filter rules (see Smart Folder Rules)
     parent_id TEXT REFERENCES smart_folders(id)
@@ -104,7 +115,6 @@ CREATE TABLE smart_folders (
 
 CREATE TABLE folders (
     id TEXT PRIMARY KEY,
-    library_id TEXT NOT NULL,  -- no FK (libraries table is in global DB)
     name TEXT NOT NULL,
     parent_id TEXT REFERENCES folders(id),
     sort_order INTEGER DEFAULT 0
@@ -230,7 +240,7 @@ Rule of thumb: component-local state (hover, input focus, animation) stays in `u
 #[tauri::command] fn list_libraries() -> Result<Vec<Library>, AppError>
 
 // Item queries
-#[tauri::command] fn query_items(library_id: String, filter: ItemFilter, sort: SortSpec, page: Pagination) -> Result<ItemPage, AppError>
+#[tauri::command] fn query_items(library_id: String, filter: ItemFilter, sort: SortSpec, page: Pagination) -> Result<ItemPage, AppError>  // library_id selects which DB connection to use; not stored in items
 #[tauri::command] fn get_item_detail(item_id: String) -> Result<Item, AppError>  // Phase 1 returns Item; future phases may add EXIF/metadata for an extended ItemDetail type
 #[tauri::command] fn update_item(item_id: String, updates: ItemUpdates) -> Result<(), AppError>
 #[tauri::command] fn delete_items(item_ids: Vec<String>, permanent: bool) -> Result<(), AppError>

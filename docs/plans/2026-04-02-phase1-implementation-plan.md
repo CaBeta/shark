@@ -90,8 +90,8 @@ pub enum AppError {
 
 **models.rs:**
 - `Library` { id, name, path, created_at }
-- `Item` { id, library_id, file_path, file_name, file_size, file_type, width, height, tags, rating, notes, sha256, status, created_at, modified_at }
-- `Folder` { id, library_id, name, parent_id, sort_order }
+- `Item` { id, file_path, file_name, file_size, file_type, width, height, tags, rating, notes, sha256, status, created_at, modified_at }
+- `Folder` { id, name, parent_id, sort_order }
 - `ItemFilter` { folder_id, file_types, rating_min, search_query }
 - `SortSpec` { field, direction }
 - `Pagination` { page, page_size }
@@ -120,14 +120,21 @@ SQLite schema, migrations, connection management.
 
 **Connection management:**
 - `init_db(path: &Path) -> Result<Connection>` — open, WAL, foreign_keys, synchronous=NORMAL
-- Connection wrapped in `Mutex<Connection>` managed via Tauri state
-- **Database architecture:** Global registry DB (`~/.shark/registry.db`) stores the `libraries` table (catalog of all libraries). Per-library DB (`<library_path>/.shark/metadata.db`) stores items, folders, thumbnails, FTS data. When a library is opened, the active `DbState` connection switches to that library's DB. `items.library_id` is for filtering within a single library, not cross-library JOINs.
+- **Database architecture:** Global registry DB (`~/.shark/registry.db`) stores the `libraries` table (catalog of all libraries). Per-library DB (`<library_path>/.shark/metadata.db`) stores items, folders, thumbnails, FTS data. When a library is opened, the active library connection switches to that library's DB.
+- **DbState dual-connection design:**
+  ```rust
+  struct DbState {
+      registry: Mutex<Connection>,        // Always connected to ~/.shark/registry.db
+      library: Mutex<Option<Connection>>,  // Connected to active library's metadata.db, or None
+  }
+  ```
+  Registry connection is established at startup and never replaced. Library connection is `None` until `open_library` is called. Each connection behind its own Mutex — registry operations never block during library switches.
 
 **Migrations (V1):**
 Schema split between two DBs:
 - **Global registry DB** (`~/.shark/registry.db`): `libraries` table
 - **Per-library DB** (`<library_path>/.shark/metadata.db`):
-  - `items` table + indexes (library_id, file_type, rating, created_at, sha256), UNIQUE(library_id, file_path) constraint. Note: `library_id` is a plain text field, no FK to `libraries` (that table is in the global DB).
+  - `items` table + indexes (file_type, rating, created_at, sha256), UNIQUE(file_path) constraint. No `library_id` column — all records in a per-library DB inherently belong to that library.
   - `folders`, `item_folders` tables
   - `smart_folders` table
   - `thumbnails` table
@@ -139,10 +146,10 @@ Migration uses `user_version` pragma for version tracking.
 - `create_library(conn, name, path)` — INSERT into libraries + create directory structure
 - `get_library(conn, id)` — SELECT library
 - `insert_item(conn, item)` — INSERT + FTS trigger fires
-- `query_items(conn, library_id, filter, sort, pagination)` — parameterized query with dynamic ORDER BY
+- `query_items(conn, filter, sort, pagination)` — parameterized query with dynamic ORDER BY
 - `get_item(conn, id)` — SELECT single item
 - `delete_item(conn, id, permanent)` — DELETE or UPDATE status
-- `get_all_tags(conn, library_id)` — parse comma-separated tags from items
+- `get_all_tags(conn)` — parse comma-separated tags from items
 
 ### Tests
 - `test_schema_creation` — in-memory DB, verify all tables exist
@@ -328,7 +335,7 @@ fn main() {
         .setup(|app| {
             // 1. Resolve app data dir (~/.shark/)
             // 2. Open global registry DB (~/.shark/registry.db), run migrations for `libraries` table
-            // 3. Manage DbState (starts as registry DB; switches to library DB when a library is opened)
+            // 3. Manage DbState (registry: always connected to registry.db; library: None until open_library)
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
