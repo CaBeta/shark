@@ -1,7 +1,8 @@
 use rusqlite::{params, Connection};
 
+use crate::db::row_to_item;
 use crate::error::AppError;
-use crate::models::{Item, SearchResult};
+use crate::models::SearchResult;
 
 pub fn search_items(
     conn: &Connection,
@@ -52,22 +53,7 @@ pub fn search_items(
     let results = stmt
         .query_map(params![fts_query, limit], |row| {
             Ok(SearchResult {
-                item: Item {
-                    id: row.get(0)?,
-                    file_path: row.get(1)?,
-                    file_name: row.get(2)?,
-                    file_size: row.get(3)?,
-                    file_type: row.get(4)?,
-                    width: row.get(5)?,
-                    height: row.get(6)?,
-                    tags: row.get(7)?,
-                    rating: row.get(8)?,
-                    notes: row.get(9)?,
-                    sha256: row.get(10)?,
-                    status: row.get(11)?,
-                    created_at: row.get(12)?,
-                    modified_at: row.get(13)?,
-                },
+                item: row_to_item(row)?,
                 rank: row.get(14)?,
             })
         })?
@@ -80,6 +66,7 @@ pub fn search_items(
 mod tests {
     use super::*;
     use crate::db::{init_library_db, insert_item};
+    use crate::models::{Item, ItemStatus};
 
     fn make_test_item(id: &str, name: &str, tags: &str) -> Item {
         Item {
@@ -94,7 +81,7 @@ mod tests {
             rating: 0,
             notes: String::new(),
             sha256: format!("hash-{id}"),
-            status: "active".to_string(),
+            status: ItemStatus::Active,
             created_at: "2026-04-02T12:00:00".to_string(),
             modified_at: "2026-04-02T12:00:00".to_string(),
         }

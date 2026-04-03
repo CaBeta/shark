@@ -12,7 +12,7 @@ interface ItemState {
 interface ItemActions {
   setItems: (items: Item[], total: number) => void;
   toggleSelect: (id: string) => void;
-  selectRange: (fromId: string, toId: string) => void;
+  selectRange: (fromId: string, toId: string, append?: boolean) => void;
   clearSelection: () => void;
   setLoading: (loading: boolean) => void;
   loadItems: (
@@ -43,8 +43,8 @@ export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
       return { selectedIds: next };
     }),
 
-  selectRange: (fromId, toId) => {
-    const { items } = get();
+  selectRange: (fromId, toId, append = false) => {
+    const { items, selectedIds } = get();
     const fromIndex = items.findIndex((item) => item.id === fromId);
     const toIndex = items.findIndex((item) => item.id === toId);
     if (fromIndex === -1 || toIndex === -1) return;
@@ -52,7 +52,16 @@ export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
     const start = Math.min(fromIndex, toIndex);
     const end = Math.max(fromIndex, toIndex);
     const rangeIds = items.slice(start, end + 1).map((item) => item.id);
-    set({ selectedIds: new Set(rangeIds) });
+
+    if (append) {
+      const next = new Set(selectedIds);
+      for (const id of rangeIds) {
+        next.add(id);
+      }
+      set({ selectedIds: next });
+    } else {
+      set({ selectedIds: new Set(rangeIds) });
+    }
   },
 
   clearSelection: () => set({ selectedIds: new Set<string>() }),

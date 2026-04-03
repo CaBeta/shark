@@ -9,6 +9,32 @@ pub struct Library {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ItemStatus {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "deleted")]
+    Deleted,
+    #[serde(rename = "corrupted")]
+    Corrupted,
+}
+
+impl Default for ItemStatus {
+    fn default() -> Self {
+        Self::Active
+    }
+}
+
+impl ItemStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Deleted => "deleted",
+            Self::Corrupted => "corrupted",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
     pub file_path: String,
@@ -21,7 +47,7 @@ pub struct Item {
     pub rating: i64,
     pub notes: String,
     pub sha256: String,
-    pub status: String,
+    pub status: ItemStatus,
     pub created_at: String,
     pub modified_at: String,
 }
@@ -43,9 +69,23 @@ pub struct ItemFilter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SortDirection {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+}
+
+impl Default for SortDirection {
+    fn default() -> Self {
+        Self::Desc
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SortSpec {
     pub field: String,
-    pub direction: String,
+    pub direction: SortDirection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

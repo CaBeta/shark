@@ -11,7 +11,7 @@ interface LibraryState {
 interface LibraryActions {
   setLibraries: (libraries: Library[]) => void;
   setActiveLibrary: (id: string | null) => void;
-  addLibrary: (library: Library) => void;
+  addLibrary: (name: string, path: string) => Promise<Library>;
   loadLibraries: () => Promise<void>;
 }
 
@@ -25,8 +25,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
 
       setActiveLibrary: (id) => set({ activeLibraryId: id }),
 
-      addLibrary: (library) =>
-        set((state) => ({ libraries: [...state.libraries, library] })),
+      addLibrary: async (name, path) => {
+        const library = await invoke<Library>('create_library', { name, path });
+        set((state) => ({ libraries: [...state.libraries, library] }));
+        return library;
+      },
 
       loadLibraries: async () => {
         const libraries = await invoke<Library[]>('list_libraries');

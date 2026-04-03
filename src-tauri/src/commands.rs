@@ -81,13 +81,17 @@ pub fn import_files(
 ) -> Result<ImportResult, AppError> {
     let lib = with_registry_conn(&state, |conn| db::get_library(conn, &library_id))?;
 
+    // Prepare all data without holding the lock (file walking, SHA256, metadata)
+    let prepared = crate::indexer::prepare_import(Path::new(&source_path))?;
+
+    // Briefly lock only for DB writes (dedup check + insert)
     let guard = state
         .library
         .lock()
         .map_err(|e| AppError::Database(e.to_string()))?;
     let conn = guard.as_ref().ok_or(AppError::NoActiveLibrary)?;
 
-    crate::indexer::import_directory(conn, Path::new(&lib.path), Path::new(&source_path))
+    crate::indexer::commit_import(conn, Path::new(&lib.path), prepared)
 }
 
 #[tauri::command]

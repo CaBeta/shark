@@ -61,12 +61,6 @@ export interface ImportResult {
 
 export type ThumbnailSize = 'S256' | 'S1024';
 
-export interface LibraryStats {
-  total_items: number;
-  total_size: number;
-  by_type: Record<string, number>;
-}
-
 export interface SearchResult {
   item: Item;
   rank: number;
