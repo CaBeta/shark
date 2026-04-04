@@ -1,4 +1,4 @@
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, message } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -32,9 +32,9 @@ export function ImportButton() {
         { page: 0, page_size: 100 },
       );
 
-      alert(`Imported: ${result.imported}, Skipped: ${result.skipped}, Duplicates: ${result.duplicates}`);
+      message(`Imported: ${result.imported}, Skipped: ${result.skipped}, Duplicates: ${result.duplicates}`, { title: 'Import Complete', kind: 'info' });
     } catch (err) {
-      alert(`Import failed: ${err}`);
+      message(`Import failed: ${err}`, { title: 'Import Error', kind: 'error' });
     } finally {
       setImporting(false);
     }

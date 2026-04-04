@@ -1,13 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useItemStore } from '@/stores/itemStore';
 import { useUiStore } from '@/stores/uiStore';
+import { CreateLibraryModal } from './CreateLibraryModal';
 import type { Library } from '@/lib/types';
 
 export function LibrarySelector() {
-  const { libraries, activeLibraryId, setLibraries, setActiveLibrary } = useLibraryStore();
+  const { libraries, activeLibraryId, setLibraries, setActiveLibrary, addLibrary } = useLibraryStore();
   const loadItems = useItemStore((s) => s.loadItems);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const handleSelect = (id: string) => {
     setActiveLibrary(id);
@@ -18,23 +20,17 @@ export function LibrarySelector() {
   useEffect(() => {
     invoke<Library[]>('list_libraries').then((libs) => {
       setLibraries(libs);
-      // Auto-open previously active library using existing selection handler
       const activeId = useLibraryStore.getState().activeLibraryId;
       if (activeId && libs.some((l) => l.id === activeId)) {
         handleSelect(activeId);
       }
     }).catch((e) => useUiStore.getState().setError(String(e)));
-  }, [setLibraries, handleSelect]);
+  }, [setLibraries]);
 
-  const handleCreate = async () => {
-    const name = prompt('Library name:');
-    if (!name) return;
-    const path = prompt('Library path:');
-    if (!path) return;
-
-    const lib = await invoke<Library>('create_library', { name, path });
-    setLibraries([...libraries, lib]);
+  const handleCreate = async (name: string, path: string) => {
+    const lib = await addLibrary(name, path);
     setActiveLibrary(lib.id);
+    setShowCreateModal(false);
   };
 
   return (
@@ -54,11 +50,18 @@ export function LibrarySelector() {
         ))}
       </select>
       <button
-        onClick={handleCreate}
+        onClick={() => setShowCreateModal(true)}
         className="mt-1.5 w-full text-xs text-blue-400 hover:text-blue-300 text-left px-1"
       >
         + New Library
       </button>
+
+      {showCreateModal && (
+        <CreateLibraryModal
+          onSubmit={handleCreate}
+          onClose={() => setShowCreateModal(false)}
+        />
+      )}
     </div>
   );
 }

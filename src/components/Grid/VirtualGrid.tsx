@@ -3,12 +3,14 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useItemStore } from '@/stores/itemStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useUiStore } from '@/stores/uiStore';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { AssetCard } from './AssetCard';
 
 export function VirtualGrid() {
   const { items, selectedIds, thumbnailPaths, toggleSelect, selectRange, clearSelection } = useItemStore();
   const gridSize = useViewStore((s) => s.gridSize);
   const openViewer = useUiStore((s) => s.openViewer);
+  const activeLibraryId = useLibraryStore((s) => s.activeLibraryId);
   const [columnCount, setColumnCount] = useState(4);
   const lastClickedId = useRef<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -62,10 +64,24 @@ export function VirtualGrid() {
     [openViewer],
   );
 
+  if (!activeLibraryId) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-neutral-500 gap-2">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="currentColor" className="text-neutral-600 mb-2">
+          <rect x="4" y="8" width="40" height="32" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+          <circle cx="16" cy="22" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+          <path d="M4 32l10-8 8 6 8-10 14 12" fill="none" stroke="currentColor" strokeWidth="2" />
+        </svg>
+        <span className="text-base font-medium text-neutral-400">Welcome to Shark</span>
+        <span className="text-sm">Create a library in the sidebar to get started.</span>
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div ref={parentRef} className="flex-1 flex items-center justify-center text-neutral-500 text-sm">
-        No items. Import a folder to get started.
+        No items yet. Click Import to add files.
       </div>
     );
   }
