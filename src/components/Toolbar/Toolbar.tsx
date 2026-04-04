@@ -28,7 +28,7 @@ export function Toolbar() {
           limit: 100,
         })
           .then((results) => setItems(results.map((r) => r.item), results.length))
-          .catch(() => {});
+          .catch((e) => useUiStore.getState().setError(String(e)));
       } else {
         loadItems(
           activeLibraryId,

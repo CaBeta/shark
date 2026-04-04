@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useItemStore } from '@/stores/itemStore';
+import { useUiStore } from '@/stores/uiStore';
 import type { Folder } from '@/lib/types';
 
 export function FolderList() {
@@ -17,7 +18,7 @@ export function FolderList() {
     }
     invoke<Folder[]>('get_folders', { libraryId: activeLibraryId })
       .then(setFolders)
-      .catch(() => {});
+      .catch((e) => useUiStore.getState().setError(String(e)));
   }, [activeLibraryId]);
 
   const handleSelectFolder = (folderId: string | null) => {

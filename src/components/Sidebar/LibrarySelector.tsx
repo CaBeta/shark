@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useItemStore } from '@/stores/itemStore';
+import { useUiStore } from '@/stores/uiStore';
 import type { Library } from '@/lib/types';
 
 export function LibrarySelector() {
@@ -9,8 +10,15 @@ export function LibrarySelector() {
   const loadItems = useItemStore((s) => s.loadItems);
 
   useEffect(() => {
-    invoke<Library[]>('list_libraries').then(setLibraries).catch(() => {});
-  }, [setLibraries]);
+    invoke<Library[]>('list_libraries').then((libs) => {
+      setLibraries(libs);
+      // Auto-open previously active library using existing selection handler
+      const activeId = useLibraryStore.getState().activeLibraryId;
+      if (activeId && libs.some((l) => l.id === activeId)) {
+        handleSelect(activeId);
+      }
+    }).catch((e) => useUiStore.getState().setError(String(e)));
+  }, [setLibraries, handleSelect]);
 
   const handleCreate = async () => {
     const name = prompt('Library name:');
@@ -25,7 +33,7 @@ export function LibrarySelector() {
 
   const handleSelect = (id: string) => {
     setActiveLibrary(id);
-    invoke('open_library', { path: libraries.find((l) => l.id === id)?.path }).catch(() => {});
+    invoke('open_library', { path: libraries.find((l) => l.id === id)?.path }).catch((e) => useUiStore.getState().setError(String(e)));
     loadItems(id, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
   };
 

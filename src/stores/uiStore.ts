@@ -11,6 +11,7 @@ interface UiState {
   viewerItemId: string | null;
   contextMenu: ContextMenu | null;
   importing: boolean;
+  error: string | null;
 }
 
 interface UiActions {
@@ -19,6 +20,7 @@ interface UiActions {
   setContextMenu: (menu: ContextMenu) => void;
   clearContextMenu: () => void;
   setImporting: (importing: boolean) => void;
+  setError: (msg: string | null) => void;
 }
 
 export const useUiStore = create<UiState & UiActions>()((set) => ({
@@ -26,6 +28,7 @@ export const useUiStore = create<UiState & UiActions>()((set) => ({
   viewerItemId: null,
   contextMenu: null,
   importing: false,
+  error: null,
 
   openViewer: (itemId) =>
     set({ viewerOpen: true, viewerItemId: itemId }),
@@ -38,4 +41,6 @@ export const useUiStore = create<UiState & UiActions>()((set) => ({
   clearContextMenu: () => set({ contextMenu: null }),
 
   setImporting: (importing) => set({ importing }),
+
+  setError: (msg) => set({ error: msg }),
 }));
