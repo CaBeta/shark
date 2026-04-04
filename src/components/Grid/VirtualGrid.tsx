@@ -6,7 +6,7 @@ import { useUiStore } from '@/stores/uiStore';
 import { AssetCard } from './AssetCard';
 
 export function VirtualGrid() {
-  const { items, selectedIds, toggleSelect, selectRange, clearSelection } = useItemStore();
+  const { items, selectedIds, thumbnailPaths, toggleSelect, selectRange, clearSelection } = useItemStore();
   const gridSize = useViewStore((s) => s.gridSize);
   const openViewer = useUiStore((s) => s.openViewer);
   const [columnCount, setColumnCount] = useState(4);
@@ -102,6 +102,7 @@ export function VirtualGrid() {
                   item={item}
                   size={gridSize}
                   selected={selectedIds.has(item.id)}
+                  thumbnailPath={thumbnailPaths[item.id]}
                   onClick={(e) => handleClick(e, item.id)}
                   onDoubleClick={() => handleDoubleClick(item.id)}
                 />

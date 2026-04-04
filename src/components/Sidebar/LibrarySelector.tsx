@@ -9,6 +9,12 @@ export function LibrarySelector() {
   const { libraries, activeLibraryId, setLibraries, setActiveLibrary } = useLibraryStore();
   const loadItems = useItemStore((s) => s.loadItems);
 
+  const handleSelect = (id: string) => {
+    setActiveLibrary(id);
+    invoke('open_library', { path: libraries.find((l) => l.id === id)?.path }).catch((e) => useUiStore.getState().setError(String(e)));
+    loadItems(id, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
+  };
+
   useEffect(() => {
     invoke<Library[]>('list_libraries').then((libs) => {
       setLibraries(libs);
@@ -29,12 +35,6 @@ export function LibrarySelector() {
     const lib = await invoke<Library>('create_library', { name, path });
     setLibraries([...libraries, lib]);
     setActiveLibrary(lib.id);
-  };
-
-  const handleSelect = (id: string) => {
-    setActiveLibrary(id);
-    invoke('open_library', { path: libraries.find((l) => l.id === id)?.path }).catch((e) => useUiStore.getState().setError(String(e)));
-    loadItems(id, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
   };
 
   return (

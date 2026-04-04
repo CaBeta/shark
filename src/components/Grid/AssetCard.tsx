@@ -6,6 +6,7 @@ interface AssetCardProps {
   item: Item;
   size: number;
   selected: boolean;
+  thumbnailPath?: string;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
 }
@@ -14,15 +15,17 @@ export const AssetCard = React.memo(function AssetCard({
   item,
   size,
   selected,
+  thumbnailPath,
   onClick,
   onDoubleClick,
 }: AssetCardProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
-  // Build thumbnail URL — thumb_256_path is stored in DB
-  // For Phase 1, use the original file as thumbnail source via convertFileSrc
-  const thumbSrc = !error ? convertFileSrc(item.file_path) : undefined;
+  // Use generated thumbnail if available, otherwise fall back to original file
+  const thumbSrc = !error
+    ? convertFileSrc(thumbnailPath ?? item.file_path)
+    : undefined;
 
   return (
     <div

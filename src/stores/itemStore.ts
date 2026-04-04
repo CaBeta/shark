@@ -7,6 +7,7 @@ interface ItemState {
   selectedIds: Set<string>;
   loading: boolean;
   total: number;
+  thumbnailPaths: Record<string, string>;
 }
 
 interface ItemActions {
@@ -21,6 +22,7 @@ interface ItemActions {
     sort: SortSpec,
     page: Pagination,
   ) => Promise<void>;
+  loadThumbnails: (itemIds: string[]) => Promise<void>;
 }
 
 export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
@@ -28,6 +30,7 @@ export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
   selectedIds: new Set<string>(),
   loading: false,
   total: 0,
+  thumbnailPaths: {},
 
   setItems: (items, total) =>
     set({ items, total, selectedIds: new Set<string>() }),
@@ -82,8 +85,27 @@ export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
         total: result.total,
         selectedIds: new Set<string>(),
       });
+      // Load thumbnails for the new items
+      const ids = result.items.map((i) => i.id);
+      if (ids.length > 0) {
+        get().loadThumbnails(ids);
+      }
     } finally {
       set({ loading: false });
+    }
+  },
+
+  loadThumbnails: async (itemIds) => {
+    const { activeLibraryId } = await import('./libraryStore').then((m) => m.useLibraryStore.getState());
+    if (!activeLibraryId) return;
+    try {
+      const map = await invoke<Record<string, string>>('get_thumbnails_batch', {
+        itemIds,
+        size: 'S256',
+      });
+      set((state) => ({ thumbnailPaths: { ...state.thumbnailPaths, ...map } }));
+    } catch {
+      // Thumbnails not yet generated — fall back to original file
     }
   },
 }));
