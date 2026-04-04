@@ -10,6 +10,67 @@
 
 ---
 
+### Path → Task Mapping
+
+| Design Path | Plan Task |
+|-------------|-----------|
+| Phase 0: Interface Audit | Task 0 |
+| Path 1: Create library | Task 4 |
+| Path 2: Open library | Task 3 (auto-open), Task 4 (manual open) |
+| Path 3: Import files | Task 5 |
+| Path 4: Browse grid | Task 6, Task 10 (thumbnails) |
+| Path 5: Search | Task 7 |
+| Path 6: View image | Task 8 |
+| Path 7: Folder tree | Task 9 |
+| Path 8: Tags *(deferred)* | — |
+| Path 9: Sort & filter *(deferred)* | — |
+| Path 10: Multi-select *(deferred)* | — |
+| Phase 3: Perf benchmarks | Task 13, Task 14 |
+
+---
+
+### Task 0: IPC interface audit
+
+Before launching the app, verify that all frontend `invoke()` calls match the Rust command signatures. Tauri deserializes using serde, so Rust `snake_case` parameters are automatically converted to `camelCase` in TypeScript — confirm each call uses the correct casing.
+
+**Files:**
+- Read: `src-tauri/src/commands.rs` — all `#[tauri::command]` functions
+- Read: `src/stores/*.ts`, `src/components/**/*.tsx` — all `invoke()` calls
+
+**Step 1: Audit parameter names**
+
+For each Rust command, list its parameters. For each frontend `invoke()` call, verify the parameter object keys match (accounting for snake_case → camelCase). Common mismatches:
+- Rust `library_id` → TS must use `libraryId`
+- Rust `page_size` → TS must use `pageSize`
+- Rust `sort_field` → TS must use `sortField`
+- Rust `sort_direction` → TS must use `sortDirection`
+
+**Step 2: Audit enum serialization**
+
+Check that enum variants passed across IPC match what serde expects:
+- `ThumbnailSize` variants: `"S256"`, `"S1024"`
+- `SortField` and `SortDirection` variants
+
+**Step 3: Audit return types**
+
+For each `invoke<T>(command, args)` call, verify `T` matches the actual Rust return type. Watch for:
+- `Vec<Item>` → `Item[]` in TS
+- `HashMap<String, String>` → `Record<string, string>` in TS
+- Optional fields correctly typed
+
+**Step 4: Fix any mismatches**
+
+If mismatches are found, update the frontend calls to match Rust signatures (frontend is the source of truth for UI behavior, but Rust defines the wire format).
+
+**Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "Fix IPC parameter name mismatches between frontend and backend"
+```
+
+---
+
 ### Task 1: Fix build configuration
 
 The `tauri.conf.json` uses `pnpm` but the project may not have pnpm. Normalize to the package manager that's actually available. Also fix the window title in `index.html`.
@@ -45,7 +106,7 @@ Expected: Both Vite dev server and Rust compilation start without errors. Window
 
 ```bash
 git add src-tauri/tauri.conf.json index.html
-git commit -m "fix: normalize build config and app title"
+git commit -m "Normalize build config and app title"
 ```
 
 ---
@@ -93,35 +154,33 @@ Expected: Compiles without errors
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/src/lib.rs src-tauri/capabilities/default.json
-git commit -m "feat: add Tauri dialog plugin for folder picker"
+git commit -m "Add Tauri dialog plugin for folder picker"
 ```
 
 ---
 
 ### Task 3: Wire up app initialization flow
 
-On app startup, the `LibrarySelector` already calls `list_libraries`, and if a library was previously active (persisted in localStorage), it should auto-open and load items. Currently `LibrarySelector` lists libraries but doesn't auto-select the active one on mount.
+On app startup, the `LibrarySelector` already calls `list_libraries`, and if a library was previously active (persisted in localStorage), it should auto-open the database connection and load items. Currently `LibrarySelector` lists libraries but doesn't auto-open the database connection and load items for the previously active one on mount.
 
 **Files:**
 - Modify: `src/components/Sidebar/LibrarySelector.tsx`
 
 **Step 1: Add auto-open on mount**
 
-When `LibrarySelector` mounts, if `activeLibraryId` is set and matches a known library, auto-call `open_library` and `loadItems`. Update the `useEffect` to handle this:
+When `LibrarySelector` mounts, if `activeLibraryId` is set and matches a known library, call the existing `handleSelect(activeId)` function to open the database connection and load items. This reuses the manual selection logic rather than duplicating the `open_library` + `loadItems` calls:
 
 ```tsx
 useEffect(() => {
   invoke<Library[]>('list_libraries').then((libs) => {
     setLibraries(libs);
-    // Auto-open previously active library
+    // Auto-open previously active library using existing selection handler
     const activeId = useLibraryStore.getState().activeLibraryId;
     if (activeId && libs.some((l) => l.id === activeId)) {
-      const lib = libs.find((l) => l.id === activeId)!;
-      invoke('open_library', { path: lib.path }).catch(() => {});
-      loadItems(activeId, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
+      handleSelect(activeId);
     }
   }).catch(() => {});
-}, [setLibraries, loadItems]);
+}, [setLibraries, handleSelect]);
 ```
 
 **Step 2: Verify in browser**
@@ -135,7 +194,7 @@ Run: `npm run tauri dev`
 
 ```bash
 git add src/components/Sidebar/LibrarySelector.tsx
-git commit -m "feat: auto-open active library on app startup"
+git commit -m "Auto-open active library on app startup"
 ```
 
 ---
@@ -162,7 +221,10 @@ Run: `npm run tauri dev`
 Check the following:
 - `/tmp/shark-test-lib/images/` directory exists
 - `/tmp/shark-test-lib/.shark/metadata.db` exists
-- Registry at `~/Library/Application Support/com.shark.asset-manager/registry.db` has the library entry
+- Registry has the library entry. Registry path varies by platform:
+  - **macOS:** `~/Library/Application Support/com.shark.asset-manager/registry.db`
+  - **Linux:** `~/.local/share/com.shark.asset-manager/registry.db`
+  - **Windows:** `%APPDATA%\com.shark.asset-manager\registry.db`
 - The library appears in the dropdown and is selected
 
 If any step fails, note the exact error and fix inline.
@@ -183,14 +245,9 @@ Run:
 ```bash
 mkdir -p /tmp/shark-test-images
 for i in $(seq 1 10); do
-  convert -size 100x100 xc:blue /tmp/shark-test-images/test_${i}.png 2>/dev/null || \
-  python3 -c "
-from PIL import Image
-img = Image.new('RGB', (100,100), (0,0,255))
-img.save('/tmp/shark-test-images/test_${i}.png')
-" 2>/dev/null || \
-  cp /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/ToolbarUtilitiesFolderIcon.icns /tmp/shark-test-images/test_${i}.png 2>/dev/null || \
-  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /tmp/shark-test-images/test_${i}.png
+  # Use sips (macOS built-in) to generate a 1000x1000 JPEG from a 1x1 seed
+  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /tmp/seed.png
+  sips -z 1000 1000 -s format jpeg /tmp/seed.png --out "/tmp/shark-test-images/test_${i}.jpg" >/dev/null 2>&1
 done
 ```
 
@@ -223,6 +280,7 @@ Verify the virtual grid displays items correctly.
 
 With items imported from Task 5:
 1. Check that AssetCard shows image thumbnails (via `convertFileSrc`)
+   > **Note:** The asset protocol (`convertFileSrc`) should already be configured in `tauri.conf.json` under `plugins.fs.scope`. If thumbnails fail to load, verify the protocol is registered and the thumbnail directory is within the allowed scope.
 2. Click items — selection ring should appear
 3. Shift+click for range selection
 4. Ctrl+click for toggle selection
@@ -297,7 +355,7 @@ Verify folder sidebar works.
 1. Folder list should show "All Items" button (no folders yet since import doesn't auto-create folder entries)
 2. Click "All Items" — grid shows all items
 
-Note: The current `import_files` flow doesn't create folder entries. This is expected — folders are a future feature for manual organization. The folder list being empty is correct behavior.
+Note: The current `import_files` flow doesn't create folder entries. The `get_folders` read command exists in the Rust backend, but the write commands to create/manage folder entries during import are not yet implemented. The folder list being empty is expected at this stage.
 
 **Step 2: Commit any fixes**
 
@@ -357,7 +415,7 @@ Pass thumbnail paths from itemStore to AssetCard via VirtualGrid.
 
 ```bash
 git add src/stores/itemStore.ts src/components/Grid/AssetCard.tsx src/components/Grid/VirtualGrid.tsx
-git commit -m "feat: use generated 256px thumbnails in grid"
+git commit -m "Use generated 256px thumbnails in grid"
 ```
 
 ---
@@ -379,6 +437,8 @@ In `src/stores/uiStore.ts`, add:
 error: string | null;
 setError: (msg: string | null) => void;
 ```
+
+> **Note:** Storing error state in uiStore is a temporary solution. Once the app matures, consider replacing this with a dedicated toast/notification library for richer UX (auto-dismiss, stacking, severity levels).
 
 **Step 2: Replace empty catches with error display**
 
@@ -408,7 +468,7 @@ Add a simple error banner that auto-dismisses:
 
 ```bash
 git add src/stores/uiStore.ts src/stores/libraryStore.ts src/components/Sidebar/LibrarySelector.tsx src/components/Sidebar/FolderList.tsx src/components/Toolbar/Toolbar.tsx src/App.tsx
-git commit -m "feat: add error handling for IPC calls"
+git commit -m "Add error handling for IPC calls"
 ```
 
 ---
@@ -445,7 +505,9 @@ Test import throughput with a larger batch of images.
 ```bash
 mkdir -p /tmp/shark-perf-images
 for i in $(seq 1 100); do
-  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /tmp/shark-perf-images/img_$(printf '%03d' $i).png
+  # Use sips (macOS built-in) to generate a 1000x1000 JPEG from a 1x1 seed
+  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /tmp/seed.png
+  sips -z 1000 1000 -s format jpeg /tmp/seed.png --out "/tmp/shark-perf-images/img_$(printf '%03d' $i).jpg" >/dev/null 2>&1
 done
 ```
 

@@ -10,6 +10,14 @@ Get Shark's core workflows running end-to-end: frontend UI ↔ Zustand stores �
 2. **Run `npm run tauri dev`** and validate each path sequentially
 3. **Fix bugs in-place** — no backlog, resolve each issue before moving on
 
+## Phase 0: Interface Audit
+
+| # | Check | Validation |
+|---|-------|------------|
+| — | Rust snake_case → TS camelCase | All `invoke()` parameter names match Rust `#[tauri::command]` field names after Tauri's deserialization |
+| — | Enum serialization | `ThumbnailSize` / `SortField` / `SortDirection` serialize correctly across the IPC boundary |
+| — | Return type matching | Frontend `invoke<T>()` generic types match actual Rust return types (Vec vs array, field names, Option handling) |
+
 ## Phase 1: Core Flow
 
 | # | Path | Modules | Validation |
@@ -26,9 +34,9 @@ Get Shark's core workflows running end-to-end: frontend UI ↔ Zustand stores �
 | # | Path | Validation |
 |---|------|------------|
 | 7 | Folder tree | `get_folders` returns hierarchy, click filters grid |
-| 8 | Tags | `get_all_tags` returns list, filter by tag |
-| 9 | Sort & filter | filterStore params passed to `query_items`, correct sort fields |
-| 10 | Multi-select | Ctrl+click, Shift+click, batch delete |
+| 8 | Tags *(deferred)* | `get_all_tags` returns list, filter by tag — tag infrastructure exists, interactive tagging UI deferred |
+| 9 | Sort & filter *(deferred)* | filterStore params passed to `query_items`, correct sort fields — validation deferred to post-MVP |
+| 10 | Multi-select *(deferred)* | Ctrl+click, Shift+click, batch delete — validation deferred to post-MVP |
 
 ## Phase 3: Performance Benchmarks
 
