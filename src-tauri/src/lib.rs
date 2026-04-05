@@ -4,6 +4,7 @@ mod error;
 mod indexer;
 mod models;
 mod search;
+mod smart_folder;
 mod thumbnail;
 
 use tauri::Manager;
