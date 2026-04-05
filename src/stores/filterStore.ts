@@ -7,6 +7,7 @@ interface FilterState {
   searchQuery: string;
   fileTypes: string[];
   ratingMin: number | null;
+  smartFolderId: string | null;
 }
 
 interface FilterActions {
@@ -15,6 +16,7 @@ interface FilterActions {
   setSearchQuery: (query: string) => void;
   setFileTypes: (types: string[]) => void;
   setRatingMin: (rating: number | null) => void;
+  setSmartFolderId: (id: string | null) => void;
   resetFilters: () => void;
 }
 
@@ -24,6 +26,7 @@ const initialState: FilterState = {
   searchQuery: '',
   fileTypes: [],
   ratingMin: null,
+  smartFolderId: null,
 };
 
 export const useFilterStore = create<FilterState & FilterActions>()(
@@ -40,6 +43,8 @@ export const useFilterStore = create<FilterState & FilterActions>()(
       setFileTypes: (types) => set({ fileTypes: types }),
 
       setRatingMin: (rating) => set({ ratingMin: rating }),
+
+      setSmartFolderId: (id) => set({ smartFolderId: id }),
 
       resetFilters: () => set(initialState),
     }),

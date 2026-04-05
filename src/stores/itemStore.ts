@@ -24,6 +24,12 @@ interface ItemActions {
     sort: SortSpec,
     page: Pagination,
   ) => Promise<void>;
+  loadSmartFolderItems: (
+    libraryId: string,
+    smartFolderId: string,
+    sort: SortSpec,
+    page: Pagination,
+  ) => Promise<void>;
   loadThumbnails: (itemIds: string[]) => Promise<void>;
 }
 
@@ -103,6 +109,31 @@ export const useItemStore = create<ItemState & ItemActions>()((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load items:', e);
+      useUiStore.getState().setError(String(e));
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  loadSmartFolderItems: async (_libraryId, smartFolderId, sort, page) => {
+    set({ loading: true });
+    try {
+      const result = await invoke<ItemPage>('query_smart_folder_items', {
+        id: smartFolderId,
+        sort,
+        page,
+      });
+      set({
+        items: result.items,
+        total: result.total,
+        selectedIds: new Set<string>(),
+      });
+      const ids = result.items.map((i) => i.id);
+      if (ids.length > 0) {
+        get().loadThumbnails(ids);
+      }
+    } catch (e) {
+      console.error('Failed to load smart folder items:', e);
       useUiStore.getState().setError(String(e));
     } finally {
       set({ loading: false });
