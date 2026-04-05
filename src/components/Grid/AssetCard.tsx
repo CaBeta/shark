@@ -45,14 +45,14 @@ export const AssetCard = React.memo(function AssetCard({
       onDoubleClick={onDoubleClick}
     >
       <div
-        className="bg-neutral-800 flex items-center justify-center"
+        className="bg-neutral-800 overflow-hidden"
         style={{ width: size, height: size }}
       >
         {thumbSrc && (
           <img
             src={thumbSrc}
             alt={item.file_name}
-            className={`max-w-full max-h-full object-contain transition-opacity ${
+            className={`w-full h-full object-cover transition-opacity ${
               loaded ? 'opacity-100' : 'opacity-0'
             }`}
             onLoad={() => setLoaded(true)}
