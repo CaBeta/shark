@@ -9,6 +9,7 @@ use crate::db::{self, DbState};
 use crate::error::AppError;
 use crate::models::*;
 use crate::search;
+use crate::models::RuleGroup;
 
 fn with_library_conn<F, T>(state: &State<'_, DbState>, f: F) -> Result<T, AppError>
 where
@@ -210,4 +211,70 @@ pub fn get_all_tags(
 ) -> Result<Vec<String>, AppError> {
     let _ = library_id;
     with_library_conn(&state, |conn| db::get_all_tags(conn))
+}
+
+#[tauri::command]
+pub fn list_smart_folders(state: State<'_, DbState>) -> Result<Vec<SmartFolder>, AppError> {
+    with_library_conn(&state, |conn| db::list_smart_folders(conn))
+}
+
+#[tauri::command]
+pub fn get_smart_folder(id: String, state: State<'_, DbState>) -> Result<SmartFolder, AppError> {
+    with_library_conn(&state, |conn| db::get_smart_folder(conn, &id))
+}
+
+#[tauri::command]
+pub fn create_smart_folder(
+    name: String,
+    rules: String,
+    parent_id: Option<String>,
+    state: State<'_, DbState>,
+) -> Result<SmartFolder, AppError> {
+    with_library_conn(&state, |conn| {
+        // Validate rules parse correctly
+        let _: RuleGroup = serde_json::from_str(&rules)
+            .map_err(|e| AppError::Database(format!("Invalid rules JSON: {e}")))?;
+        db::create_smart_folder(conn, &name, &rules, parent_id.as_deref())
+    })
+}
+
+#[tauri::command]
+pub fn update_smart_folder(
+    id: String,
+    name: Option<String>,
+    rules: Option<String>,
+    parent_id: Option<Option<String>>,
+    state: State<'_, DbState>,
+) -> Result<SmartFolder, AppError> {
+    with_library_conn(&state, |conn| {
+        if let Some(ref r) = rules {
+            let _: RuleGroup = serde_json::from_str(r)
+                .map_err(|e| AppError::Database(format!("Invalid rules JSON: {e}")))?;
+        }
+        db::update_smart_folder(
+            conn,
+            &id,
+            name.as_deref(),
+            rules.as_deref(),
+            parent_id.as_ref().map(|opt| opt.as_deref()),
+        )
+    })
+}
+
+#[tauri::command]
+pub fn delete_smart_folder(id: String, state: State<'_, DbState>) -> Result<(), AppError> {
+    with_library_conn(&state, |conn| db::delete_smart_folder(conn, &id))
+}
+
+#[tauri::command]
+pub fn query_smart_folder_items(
+    id: String,
+    sort: SortSpec,
+    page: Pagination,
+    state: State<'_, DbState>,
+) -> Result<ItemPage, AppError> {
+    with_library_conn(&state, |conn| {
+        let sf = db::get_smart_folder(conn, &id)?;
+        db::query_smart_folder_items(conn, &sf.rules, &sort, &page)
+    })
 }
