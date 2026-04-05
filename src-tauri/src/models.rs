@@ -130,3 +130,24 @@ pub struct SearchResult {
     pub item: Item,
     pub rank: f64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartFolder {
+    pub id: String,
+    pub name: String,
+    pub rules: String,
+    pub parent_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleGroup {
+    pub operator: String, // "AND" or "OR"
+    pub conditions: Vec<Condition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Condition {
+    pub field: String,
+    pub op: String,
+    pub value: serde_json::Value,
+}
