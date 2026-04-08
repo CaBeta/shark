@@ -3,6 +3,7 @@ import { LibrarySelector } from './LibrarySelector';
 import { FolderList } from './FolderList';
 import { SmartFolderList } from './SmartFolderList';
 import { SmartFolderEditor } from './SmartFolderEditor';
+import { SidebarDropZone } from './SidebarDropZone';
 import type { SmartFolder } from '@/lib/types';
 
 export function Sidebar() {
@@ -33,6 +34,7 @@ export function Sidebar() {
           }}
         />
       )}
+      <SidebarDropZone />
     </div>
   );
 }
