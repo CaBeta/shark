@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useItemStore } from '@/stores/itemStore';
+import { Plus } from 'lucide-react';
 import type { ImportPrepResult, ImportResult, Item } from '@/lib/types';
 
 
@@ -74,9 +75,10 @@ export function ImportButton() {
     <button
       onClick={handleImport}
       disabled={!activeLibraryId}
-      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
+      className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+      title="Import"
     >
-      Import
+      <Plus size={18} />
     </button>
   );
 }
