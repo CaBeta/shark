@@ -104,6 +104,77 @@ pub fn prepare_import(source_path: &Path) -> Result<Vec<Result<PreparedFile, App
     Ok(prepared)
 }
 
+/// Prepare import from a mixed list of file and folder paths.
+/// Files are processed directly; folders are recursively walked.
+pub fn prepare_from_paths(paths: &[String]) -> Result<Vec<Result<PreparedFile, AppError>>, AppError> {
+    let mut all_files: Vec<std::path::PathBuf> = Vec::new();
+
+    for p in paths {
+        let path = Path::new(p);
+        if !path.exists() {
+            continue;
+        }
+        if path.is_file() {
+            if is_supported_image(path) {
+                all_files.push(path.to_path_buf());
+            }
+        } else if path.is_dir() {
+            let dir_files: Vec<std::path::PathBuf> = WalkDir::new(path)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .filter(|e| is_supported_image(e.path()))
+                .map(|e| e.into_path())
+                .collect();
+            all_files.extend(dir_files);
+        }
+    }
+
+    // Deduplicate paths (same file might appear via folder + direct path)
+    all_files.sort();
+    all_files.dedup();
+
+    if all_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let prepared: Vec<Result<PreparedFile, AppError>> = all_files
+        .into_par_iter()
+        .map(|path| {
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str().map(String::from))
+                .unwrap_or_default();
+            let file_size = path.metadata().map(|m| m.len() as i64).unwrap_or(0);
+            let ext = path
+                .extension()
+                .and_then(OsStr::to_str)
+                .map(|e| e.to_uppercase())
+                .unwrap_or_else(|| "JPG".to_string());
+
+            let sha256 = compute_sha256(&path)?;
+
+            let (width, height) = match image::image_dimensions(&path) {
+                Ok((w, h)) => (Some(w as i64), Some(h as i64)),
+                Err(_) => (None, None),
+            };
+
+            Ok(PreparedFile {
+                source_path: path,
+                id: uuid::Uuid::new_v4().to_string(),
+                file_name,
+                file_size,
+                file_type: ext,
+                sha256,
+                width,
+                height,
+            })
+        })
+        .collect();
+
+    Ok(prepared)
+}
+
 /// Identifies duplicates among prepared files against existing DB items.
 /// Returns (duplicates_info, non_duplicate_files).
 pub fn find_duplicates(
