@@ -7,13 +7,25 @@ import { useUiStore } from '@/stores/uiStore';
 import { useItemStore } from '@/stores/itemStore';
 import { ImportButton } from '@/components/Import/ImportButton';
 import type { SearchResult } from '@/lib/types';
+import {
+  Search, LayoutGrid, List, SlidersHorizontal,
+  ChevronLeft, ChevronRight, Sidebar as SidebarIcon,
+  Image as ImageIcon,
+} from 'lucide-react';
 
 export function Toolbar() {
   const { libraries, activeLibraryId } = useLibraryStore();
-  const { sidebarOpen, toggleSidebar, gridSize, setGridSize } = useViewStore();
+  const { toggleSidebar, gridSize, setGridSize, viewMode, setViewMode } = useViewStore();
   const { searchQuery, setSearchQuery } = useFilterStore();
   const { setItems, loadItems } = useItemStore();
   const activeLib = libraries.find((l) => l.id === activeLibraryId);
+
+  // Map gridSize (100-400) to zoom slider (10-100)
+  const zoom = Math.round(((gridSize - 100) / 300) * 90 + 10);
+  const handleZoomChange = (z: number) => {
+    const size = Math.round(((z - 10) / 90) * 300 + 100);
+    setGridSize(size);
+  };
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -41,58 +53,73 @@ export function Toolbar() {
   );
 
   return (
-    <div className="flex items-center gap-3 h-12 px-4 bg-neutral-800 border-b border-neutral-700 shrink-0">
-      <button
-        onClick={toggleSidebar}
-        className="p-1.5 hover:bg-neutral-700 rounded transition-colors"
-        title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="1" y="3" width="14" height="1.5" rx="0.5" />
-          <rect x="1" y="7" width="14" height="1.5" rx="0.5" />
-          <rect x="1" y="11" width="14" height="1.5" rx="0.5" />
-        </svg>
-      </button>
-
-      <span className="text-sm font-semibold truncate max-w-[200px]">
-        {activeLib ? activeLib.name : 'Shark'}
-      </span>
-
-      <div className="flex-1" />
-
-      <input
-        type="text"
-        value={searchQuery}
-        onChange={(e) => handleSearch(e.target.value)}
-        placeholder="Search..."
-        className="w-48 px-2.5 py-1 bg-neutral-700 rounded text-sm border border-neutral-600 focus:border-blue-500 focus:outline-none"
-      />
-
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => setGridSize(Math.max(100, gridSize - 25))}
-          className="p-1 hover:bg-neutral-700 rounded transition-colors"
-          title="Smaller"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            <rect x="1" y="1" width="5" height="5" rx="1" />
-            <rect x="8" y="1" width="5" height="5" rx="1" />
-            <rect x="1" y="8" width="5" height="5" rx="1" />
-            <rect x="8" y="8" width="5" height="5" rx="1" />
-          </svg>
-        </button>
-        <button
-          onClick={() => setGridSize(Math.min(400, gridSize + 25))}
-          className="p-1 hover:bg-neutral-700 rounded transition-colors"
-          title="Larger"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            <rect x="1" y="1" width="12" height="12" rx="1" />
-          </svg>
-        </button>
+    <div className="h-14 border-b border-gray-200 bg-[#F6F6F6] flex items-center px-4 justify-between shrink-0">
+      {/* Left: Traffic Lights & Nav */}
+      <div className="flex items-center gap-6 w-64 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]" />
+          <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]" />
+          <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]" />
+        </div>
+        <div className="flex items-center gap-3 text-gray-500">
+          <SidebarIcon size={18} className="hover:text-gray-800 cursor-pointer" onClick={toggleSidebar} />
+          <div className="flex items-center gap-1">
+            <ChevronLeft size={20} className="text-gray-400" />
+            <ChevronRight size={20} className="text-gray-400" />
+          </div>
+        </div>
       </div>
 
-      <ImportButton />
+      {/* Center: View Controls */}
+      <div className="flex items-center justify-center flex-1">
+        <div className="flex items-center bg-white border border-gray-200 rounded-md shadow-sm overflow-hidden">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`px-3 py-1 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-700' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <LayoutGrid size={16} />
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-3 py-1 border-l border-gray-200 ${viewMode === 'list' ? 'bg-gray-100 text-gray-700' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <List size={16} />
+          </button>
+        </div>
+        <div className="mx-4 text-[13px] font-medium text-gray-700">
+          {activeLib ? activeLib.name : 'Shark'}
+        </div>
+        <div className="flex items-center gap-2 w-32">
+          <ImageIcon size={14} className="text-gray-400" />
+          <input
+            type="range"
+            min="10"
+            max="100"
+            value={zoom}
+            onChange={(e) => handleZoomChange(Number(e.target.value))}
+            className="w-full accent-blue-500 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          />
+          <ImageIcon size={18} className="text-gray-400" />
+        </div>
+      </div>
+
+      {/* Right: Search & Actions */}
+      <div className="flex items-center gap-3 w-72 justify-end shrink-0">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search..."
+            className="w-full pl-8 pr-3 py-1 text-[13px] bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+          />
+        </div>
+        <button className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-md">
+          <SlidersHorizontal size={16} />
+        </button>
+        <ImportButton />
+      </div>
     </div>
   );
 }
