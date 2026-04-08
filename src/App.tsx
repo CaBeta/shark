@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { VirtualGrid } from '@/components/Grid/VirtualGrid';
 import { ImageViewer } from '@/components/Viewer/ImageViewer';
 import { ImportProgress } from '@/components/Import/ImportProgress';
+import { DedupDialog } from '@/components/Import/DedupDialog';
 
 function App() {
   const sidebarOpen = useViewStore((s) => s.sidebarOpen);
@@ -25,6 +26,7 @@ function App() {
       </div>
       <ImageViewer />
       <ImportProgress />
+      <DedupDialog />
     </div>
   );
 }
