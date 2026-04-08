@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useItemStore } from '@/stores/itemStore';
-import type { ImportResult, Item } from '@/lib/types';
+import type { ImportPrepResult, ImportResult, Item } from '@/lib/types';
 
 
 interface ImportProgressPayload {
@@ -16,7 +16,7 @@ interface ImportProgressPayload {
 
 export function ImportButton() {
   const { libraries, activeLibraryId } = useLibraryStore();
-  const { setImporting, setImportProgress } = useUiStore();
+  const { setImporting, setImportProgress, showDedupDialog } = useUiStore();
   const addItem = useItemStore((s) => s.addItem);
   const loadItems = useItemStore((s) => s.loadItems);
 
@@ -27,29 +27,44 @@ export function ImportButton() {
     const selected = await open({ directory: true, multiple: false });
     if (!selected) return;
 
-    // Listen for progress events before starting import
-    const unlisten = await listen<ImportProgressPayload>('import-progress', (event) => {
-      const { current, total, item } = event.payload;
-      setImportProgress({ current, total });
-      if (item) {
-        addItem(item);
-      }
-    });
-
     setImporting(true);
     try {
-      await invoke<ImportResult>('import_files', {
+      // Phase 1: prepare and check duplicates
+      const prep = await invoke<ImportPrepResult>('import_prepare', {
         libraryId: lib.id,
         sourcePath: selected,
       });
-      // Refresh items from DB to load thumbnails as data URLs
-      if (activeLibraryId) {
-        loadItems(activeLibraryId, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
+
+      if (prep.duplicates.length > 0) {
+        // Show dedup dialog — import continues from DedupDialog
+        setImporting(false);
+        showDedupDialog(prep.duplicates, selected);
+        return;
+      }
+
+      // No duplicates — proceed with direct import
+      const unlisten = await listen<ImportProgressPayload>('import-progress', (event) => {
+        const { current, total, item } = event.payload;
+        setImportProgress({ current, total });
+        if (item) {
+          addItem(item);
+        }
+      });
+
+      try {
+        await invoke<ImportResult>('import_files', {
+          libraryId: lib.id,
+          sourcePath: selected,
+        });
+        if (activeLibraryId) {
+          loadItems(activeLibraryId, {}, { field: 'created_at', direction: 'desc' }, { page: 0, page_size: 100 });
+        }
+      } finally {
+        unlisten();
       }
     } catch (err) {
       message(`Import failed: ${err}`, { title: 'Import Error', kind: 'error' });
     } finally {
-      unlisten();
       setImporting(false);
       setImportProgress(null);
     }
