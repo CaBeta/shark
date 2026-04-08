@@ -10,6 +10,7 @@ use crate::error::AppError;
 use crate::models::*;
 use crate::search;
 use crate::models::RuleGroup;
+use rayon::prelude::*;
 
 fn with_library_conn<F, T>(state: &State<'_, DbState>, f: F) -> Result<T, AppError>
 where
@@ -107,6 +108,146 @@ pub async fn import_files(
     })
     .await
     .map_err(|e| AppError::Import(format!("Import task failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn import_prepare(
+    library_id: String,
+    source_path: String,
+    state: State<'_, DbState>,
+) -> Result<ImportPrepResult, AppError> {
+    let lib = with_registry_conn(&state, |conn| db::get_library(conn, &library_id))?;
+    let lib_path = lib.path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<ImportPrepResult, AppError> {
+        let prepared = crate::indexer::prepare_import(Path::new(&source_path))?;
+        let lib_db_path = Path::new(&lib_path).join(".shark").join("metadata.db");
+        let conn = db::init_library_db(&lib_db_path)?;
+
+        let total_prepared = prepared.iter().filter(|p| p.is_ok()).count();
+        let (duplicates, _non_dup_files) = crate::indexer::find_duplicates(&conn, &prepared)?;
+
+        Ok(ImportPrepResult {
+            duplicates,
+            total_prepared,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Import(format!("Import prepare failed: {e}")))?
+}
+
+#[tauri::command]
+pub async fn import_commit(
+    library_id: String,
+    source_path: String,
+    actions: std::collections::HashMap<String, DedupAction>,
+    state: State<'_, DbState>,
+    app: tauri::AppHandle,
+) -> Result<ImportResult, AppError> {
+    let lib = with_registry_conn(&state, |conn| db::get_library(conn, &library_id))?;
+    let lib_path = lib.path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<ImportResult, AppError> {
+        let prepared = crate::indexer::prepare_import(Path::new(&source_path))?;
+        let lib_db_path = Path::new(&lib_path).join(".shark").join("metadata.db");
+        let conn = db::init_library_db(&lib_db_path)?;
+
+        let (duplicates, mut non_dup_files) = crate::indexer::find_duplicates(&conn, &prepared)?;
+
+        // Apply user decisions: add "keep" files back to import list
+        let mut kept_count = 0i64;
+
+        // Collect keep files from prepared list
+        let prepared_lookup: std::collections::HashMap<String, crate::indexer::PreparedFile> = prepared
+            .into_iter()
+            .filter_map(|p| p.ok())
+            .map(|p| (p.source_path.to_string_lossy().to_string(), p))
+            .collect();
+
+        for (source_path, action) in &actions {
+            if matches!(action, DedupAction::KeepBoth) {
+                if let Some(pf) = prepared_lookup.get(source_path) {
+                    non_dup_files.push(pf.clone());
+                    kept_count += 1;
+                }
+            }
+        }
+
+        let skipped_count = duplicates.len() as i64 - kept_count;
+        let dup_count = duplicates.len() as i64;
+
+        // Import non-dup + kept files
+        let thumb_dir = Path::new(&lib_path).join(".shark").join("thumbnails");
+        std::fs::create_dir_all(Path::new(&lib_path).join("images"))?;
+        std::fs::create_dir_all(&thumb_dir)?;
+
+        let counter = std::sync::atomic::AtomicUsize::new(0);
+        let total = non_dup_files.len();
+        let processed: Vec<(Item, Option<String>)> = non_dup_files
+            .into_par_iter()
+            .map(|pf| {
+                let dest_path = crate::indexer::copy_to_library(&pf.source_path, Path::new(&lib_path), &pf.id)?;
+                let thumb_path = crate::thumbnail::generate_thumbnail(&dest_path, &thumb_dir, &pf.id, 720).ok();
+
+                let now = chrono::Utc::now().to_rfc3339();
+                let item = Item {
+                    id: pf.id,
+                    file_path: dest_path.to_string_lossy().to_string(),
+                    file_name: pf.file_name,
+                    file_size: pf.file_size,
+                    file_type: pf.file_type,
+                    width: pf.width,
+                    height: pf.height,
+                    tags: String::new(),
+                    rating: 0,
+                    notes: String::new(),
+                    sha256: pf.sha256,
+                    status: ItemStatus::Active,
+                    created_at: now.clone(),
+                    modified_at: now,
+                };
+                let thumb_str = thumb_path.map(|p| p.to_string_lossy().into_owned());
+
+                let current = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let payload = serde_json::json!({
+                    "current": current,
+                    "total": total,
+                    "item": item,
+                    "thumbnailPath": thumb_str.as_deref(),
+                });
+                let _ = app.emit("import-progress", payload);
+
+                Ok((item, thumb_str))
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        // Batch DB insert
+        conn.execute_batch("BEGIN")?;
+        let insert_result: Result<(), AppError> = (|| {
+            for (item, thumb_str) in &processed {
+                crate::db::insert_item(&conn, item)?;
+                if let Some(ref tp) = thumb_str {
+                    crate::db::insert_thumbnail(&conn, &item.id, Some(tp), None)?;
+                }
+            }
+            Ok(())
+        })();
+        match insert_result {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(e) => {
+                conn.execute_batch("ROLLBACK").ok();
+                return Err(e);
+            }
+        }
+
+        Ok(ImportResult {
+            imported: processed.len() as i64,
+            skipped: skipped_count,
+            duplicates: dup_count,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Import(format!("Import commit failed: {e}")))?
 }
 
 #[tauri::command]

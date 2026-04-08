@@ -33,6 +33,8 @@ pub fn run() {
             commands::open_library,
             commands::list_libraries,
             commands::import_files,
+            commands::import_prepare,
+            commands::import_commit,
             commands::query_items,
             commands::get_item_detail,
             commands::delete_items,

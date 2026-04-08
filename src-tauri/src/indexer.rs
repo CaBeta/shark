@@ -28,7 +28,7 @@ fn compute_sha256(path: &Path) -> Result<String, AppError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn copy_to_library(src: &Path, library_path: &Path, id: &str) -> Result<std::path::PathBuf, AppError> {
+pub fn copy_to_library(src: &Path, library_path: &Path, id: &str) -> Result<std::path::PathBuf, AppError> {
     let ext = src
         .extension()
         .and_then(OsStr::to_str)
