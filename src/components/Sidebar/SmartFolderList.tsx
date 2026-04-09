@@ -3,7 +3,7 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { useSmartFolderStore } from '@/stores/smartFolderStore';
 import { useItemStore } from '@/stores/itemStore';
 import { useFilterStore } from '@/stores/filterStore';
-import { Plus, Search, Clock, FileImage, Image as ImageIcon } from 'lucide-react';
+import { Plus, Clock } from 'lucide-react';
 import type { SmartFolder } from '@/lib/types';
 
 interface SmartFolderListProps {
