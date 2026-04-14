@@ -93,6 +93,11 @@ export interface TagCount {
   count: number;
 }
 
+export interface FolderCount {
+  folder_id: string;
+  count: number;
+}
+
 export interface SearchResult {
   item: Item;
   rank: number;
