@@ -193,3 +193,9 @@ pub struct TagCount {
     pub tag: String,
     pub count: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderCount {
+    pub folder_id: String,
+    pub count: i64,
+}

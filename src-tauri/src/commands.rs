@@ -590,3 +590,69 @@ pub fn preview_smart_folder(
 ) -> Result<u64, AppError> {
     with_library_conn(&state, |conn| db::count_matching_items(conn, &rules))
 }
+
+#[tauri::command]
+pub fn create_folder(
+    name: String,
+    parent_id: Option<String>,
+    state: State<'_, DbState>,
+) -> Result<Folder, AppError> {
+    with_library_conn(&state, |conn| {
+        db::create_folder(conn, &name, parent_id.as_deref())
+    })
+}
+
+#[tauri::command]
+pub fn rename_folder(
+    id: String,
+    name: String,
+    state: State<'_, DbState>,
+) -> Result<Folder, AppError> {
+    with_library_conn(&state, |conn| db::rename_folder(conn, &id, &name))
+}
+
+#[tauri::command]
+pub fn delete_folder(id: String, state: State<'_, DbState>) -> Result<(), AppError> {
+    with_library_conn(&state, |conn| db::delete_folder(conn, &id))
+}
+
+#[tauri::command]
+pub fn move_folder(
+    id: String,
+    parent_id: Option<String>,
+    sort_order: Option<i64>,
+    state: State<'_, DbState>,
+) -> Result<(), AppError> {
+    with_library_conn(&state, |conn| {
+        db::move_folder(conn, &id, parent_id.as_deref(), sort_order)
+    })
+}
+
+#[tauri::command]
+pub fn get_folder_item_counts(
+    state: State<'_, DbState>,
+) -> Result<Vec<FolderCount>, AppError> {
+    with_library_conn(&state, |conn| db::get_folder_item_counts(conn))
+}
+
+#[tauri::command]
+pub fn add_items_to_folder(
+    folder_id: String,
+    item_ids: Vec<String>,
+    state: State<'_, DbState>,
+) -> Result<(), AppError> {
+    with_library_conn(&state, |conn| {
+        db::add_items_to_folder(conn, &folder_id, &item_ids)
+    })
+}
+
+#[tauri::command]
+pub fn remove_items_from_folder(
+    folder_id: String,
+    item_ids: Vec<String>,
+    state: State<'_, DbState>,
+) -> Result<(), AppError> {
+    with_library_conn(&state, |conn| {
+        db::remove_items_from_folder(conn, &folder_id, &item_ids)
+    })
+}

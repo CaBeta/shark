@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Row};
 use std::path::Path;
 
 use crate::error::AppError;
-use crate::models::{Folder, Item, ItemFilter, ItemPage, ItemStatus, Library, Pagination, RuleGroup, SmartFolder, SortDirection, SortSpec, TagCount};
+use crate::models::{Folder, FolderCount, Item, ItemFilter, ItemPage, ItemStatus, Library, Pagination, RuleGroup, SmartFolder, SortDirection, SortSpec, TagCount};
 
 pub fn row_to_item(row: &Row) -> Result<Item, rusqlite::Error> {
     let status_str: String = row.get(11)?;
@@ -463,6 +463,112 @@ pub fn get_folders(conn: &Connection) -> Result<Vec<Folder>, AppError> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(folders)
+}
+
+pub fn create_folder(conn: &Connection, name: &str, parent_id: Option<&str>) -> Result<Folder, AppError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let max_order: i64 = match parent_id {
+        Some(pid) => conn.query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM folders WHERE parent_id = ?1",
+            [pid],
+            |row| row.get(0),
+        ).unwrap_or(-1),
+        None => conn.query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM folders WHERE parent_id IS NULL",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(-1),
+    };
+    conn.execute(
+        "INSERT INTO folders (id, name, parent_id, sort_order) VALUES (?1, ?2, ?3, ?4)",
+        params![id, name, parent_id, max_order + 1],
+    )?;
+    Ok(Folder {
+        id,
+        name: name.to_string(),
+        parent_id: parent_id.map(String::from),
+        sort_order: max_order + 1,
+    })
+}
+
+pub fn rename_folder(conn: &Connection, id: &str, name: &str) -> Result<Folder, AppError> {
+    conn.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name, id])?;
+    let mut stmt = conn.prepare("SELECT id, name, parent_id, sort_order FROM folders WHERE id = ?1")?;
+    let folder = stmt.query_row([id], |row| {
+        Ok(Folder {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            parent_id: row.get(2)?,
+            sort_order: row.get(3)?,
+        })
+    })?;
+    Ok(folder)
+}
+
+pub fn delete_folder(conn: &Connection, id: &str) -> Result<(), AppError> {
+    // CASCADE handles children and item_folders automatically
+    conn.execute("DELETE FROM folders WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn move_folder(conn: &Connection, id: &str, parent_id: Option<&str>, sort_order: Option<i64>) -> Result<(), AppError> {
+    match (parent_id, sort_order) {
+        (Some(pid), Some(order)) => {
+            conn.execute(
+                "UPDATE folders SET parent_id = ?1, sort_order = ?2 WHERE id = ?3",
+                params![pid, order, id],
+            )?;
+        }
+        (Some(pid), None) => {
+            conn.execute(
+                "UPDATE folders SET parent_id = ?1 WHERE id = ?2",
+                params![pid, id],
+            )?;
+        }
+        (None, Some(order)) => {
+            conn.execute(
+                "UPDATE folders SET sort_order = ?1 WHERE id = ?2",
+                params![order, id],
+            )?;
+        }
+        (None, None) => {}
+    }
+    Ok(())
+}
+
+pub fn get_folder_item_counts(conn: &Connection) -> Result<Vec<FolderCount>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT folder_id, COUNT(*) as count FROM item_folders GROUP BY folder_id",
+    )?;
+    let counts = stmt
+        .query_map([], |row| {
+            Ok(FolderCount {
+                folder_id: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(counts)
+}
+
+pub fn add_items_to_folder(conn: &Connection, folder_id: &str, item_ids: &[String]) -> Result<(), AppError> {
+    for item_id in item_ids {
+        conn.execute(
+            "INSERT OR IGNORE INTO item_folders (item_id, folder_id) VALUES (?1, ?2)",
+            params![item_id, folder_id],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn remove_items_from_folder(conn: &Connection, folder_id: &str, item_ids: &[String]) -> Result<(), AppError> {
+    for item_id in item_ids {
+        conn.execute(
+            "DELETE FROM item_folders WHERE item_id = ?1 AND folder_id = ?2",
+            params![item_id, folder_id],
+        )?;
+    }
+    Ok(())
 }
 
 pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, AppError> {
