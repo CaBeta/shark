@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { ask } from '@tauri-apps/plugin-dialog';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useItemStore } from '@/stores/itemStore';
 import { useFilterStore } from '@/stores/filterStore';
@@ -27,7 +28,10 @@ export function FolderList() {
   const [editingName, setEditingName] = useState('');
   const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [creatingParentId, setCreatingParentId] = useState<string | null | undefined>(undefined); // undefined = not creating
+  const [newFolderName, setNewFolderName] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   const smartFolderId = useFilterStore((s) => s.smartFolderId);
 
@@ -78,10 +82,21 @@ export function FolderList() {
     setBgContextMenu({ x: e.clientX, y: e.clientY });
   };
 
-  const handleCreateFolder = async (parentId?: string | null) => {
-    const name = window.prompt('Folder name:');
-    if (!name?.trim()) return;
-    const folder = await create(name.trim(), parentId ?? null);
+  const handleCreateFolder = (parentId?: string | null) => {
+    setCreatingParentId(parentId ?? null);
+    setNewFolderName('');
+    setContextMenu(null);
+    setBgContextMenu(null);
+  };
+
+  const handleFinishCreate = async () => {
+    if (!newFolderName.trim()) {
+      setCreatingParentId(undefined);
+      return;
+    }
+    const folder = await create(newFolderName.trim(), creatingParentId ?? null);
+    setCreatingParentId(undefined);
+    setNewFolderName('');
     handleSelectFolder(folder.id);
   };
 
@@ -101,7 +116,7 @@ export function FolderList() {
   };
 
   const handleDelete = async (folder: FolderType) => {
-    const ok = window.confirm(`Delete folder "${folder.name}"? Items will not be deleted.`);
+    const ok = await ask(`Delete folder "${folder.name}"? Items will not be deleted.`, { title: 'Delete Folder', kind: 'warning' });
     if (!ok) return;
     await removeFolder(folder.id);
     if (selectedFolder === folder.id) {
@@ -251,6 +266,24 @@ export function FolderList() {
           )}
         </div>
         {children.map((child) => renderFolder(child, depth + 1))}
+        {/* Inline new sub-folder input */}
+        {creatingParentId === folder.id && (
+          <div className="flex items-center gap-2 px-3 py-1.5 mb-0.5" style={{ paddingLeft: `${12 + (depth + 1) * 16}px` }}>
+            <FolderIcon size={16} className="text-[#0063E1]" />
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onBlur={handleFinishCreate}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleFinishCreate();
+                if (e.key === 'Escape') setCreatingParentId(undefined);
+              }}
+              placeholder="Folder name"
+              className="bg-white text-[#333333] text-[13px] px-1 py-0 border border-[#0063E1] rounded outline-none w-full"
+            />
+          </div>
+        )}
       </div>
     );
   };
@@ -298,10 +331,29 @@ export function FolderList() {
       </div>
 
       <div ref={listRef} onContextMenu={handleBgContextMenu}>
-        {folders.length === 0 ? (
+        {folders.length === 0 && creatingParentId === undefined ? (
           <p className="text-[12px] text-[#999999] px-3">None yet</p>
         ) : (
           topLevel.map((folder) => renderFolder(folder))
+        )}
+        {/* Inline new folder input at root level */}
+        {creatingParentId === null && (
+          <div className="flex items-center gap-2 px-3 py-1.5 mb-0.5" style={{ paddingLeft: '12px' }}>
+            <FolderIcon size={16} className="text-[#0063E1]" />
+            <input
+              ref={newFolderInputRef}
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onBlur={handleFinishCreate}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleFinishCreate();
+                if (e.key === 'Escape') setCreatingParentId(undefined);
+              }}
+              placeholder="Folder name"
+              className="bg-white text-[#333333] text-[13px] px-1 py-0 border border-[#0063E1] rounded outline-none w-full"
+            />
+          </div>
         )}
       </div>
 

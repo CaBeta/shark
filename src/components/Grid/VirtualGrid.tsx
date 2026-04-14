@@ -114,9 +114,8 @@ export function VirtualGrid() {
   };
 
   const handleCreateAndAdd = async () => {
-    const name = window.prompt('Folder name:');
-    if (!name?.trim()) return;
-    const folder = await createFolder(name.trim());
+    const name = `New Folder ${folders.length + 1}`;
+    const folder = await createFolder(name);
     const ids = contextMenu
       ? (selectedIds.size > 0 ? Array.from(selectedIds) : [contextMenu.itemId])
       : [];
