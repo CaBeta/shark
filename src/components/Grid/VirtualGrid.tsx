@@ -4,17 +4,31 @@ import { useItemStore } from '@/stores/itemStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useUiStore } from '@/stores/uiStore';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { useFolderStore } from '@/stores/folderStore';
 import { AssetCard } from './AssetCard';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, FolderPlus, Plus } from 'lucide-react';
 
 export function VirtualGrid() {
   const { items, selectedIds, thumbnailPaths, toggleSelect, selectRange, clearSelection } = useItemStore();
   const gridSize = useViewStore((s) => s.gridSize);
   const openViewer = useUiStore((s) => s.openViewer);
   const activeLibraryId = useLibraryStore((s) => s.activeLibraryId);
+  const { folders, addItems, create: createFolder } = useFolderStore();
   const [columnCount, setColumnCount] = useState(4);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
+  const [folderSubmenuOpen, setFolderSubmenuOpen] = useState(false);
   const lastClickedId = useRef<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    const handler = () => {
+      setContextMenu(null);
+      setFolderSubmenuOpen(false);
+    };
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, []);
 
   // Calculate columns based on container width
   useEffect(() => {
@@ -64,6 +78,54 @@ export function VirtualGrid() {
     },
     [openViewer],
   );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, itemId: string) => {
+      e.preventDefault();
+      // If item not selected, select it
+      if (!selectedIds.has(itemId)) {
+        clearSelection();
+        toggleSelect(itemId);
+        lastClickedId.current = itemId;
+      }
+      setContextMenu({ x: e.clientX, y: e.clientY, itemId });
+    },
+    [selectedIds, clearSelection, toggleSelect],
+  );
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, itemId: string) => {
+      const ids = selectedIds.size > 0 ? Array.from(selectedIds) : [itemId];
+      e.dataTransfer.setData('application/x-item-ids', JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = 'copy';
+    },
+    [selectedIds],
+  );
+
+  const handleAddToFolder = async (folderId: string) => {
+    const ids = contextMenu
+      ? (selectedIds.size > 0 ? Array.from(selectedIds) : [contextMenu.itemId])
+      : [];
+    if (ids.length > 0) {
+      await addItems(folderId, ids);
+    }
+    setContextMenu(null);
+    setFolderSubmenuOpen(false);
+  };
+
+  const handleCreateAndAdd = async () => {
+    const name = window.prompt('Folder name:');
+    if (!name?.trim()) return;
+    const folder = await createFolder(name.trim());
+    const ids = contextMenu
+      ? (selectedIds.size > 0 ? Array.from(selectedIds) : [contextMenu.itemId])
+      : [];
+    if (ids.length > 0) {
+      await addItems(folder.id, ids);
+    }
+    setContextMenu(null);
+    setFolderSubmenuOpen(false);
+  };
 
   if (!activeLibraryId) {
     return (
@@ -156,6 +218,8 @@ export function VirtualGrid() {
                     thumbnailPath={thumbnailPaths[item.id]}
                     onClick={(e) => handleClick(e, item.id)}
                     onDoubleClick={() => handleDoubleClick(item.id)}
+                    onContextMenu={(e) => handleContextMenu(e, item.id)}
+                    onDragStart={(e) => handleDragStart(e, item.id)}
                   />
                 ))}
               </div>
@@ -163,6 +227,50 @@ export function VirtualGrid() {
           })}
         </div>
       </div>
+
+      {/* Grid item context menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-50 py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="relative"
+            onMouseEnter={() => setFolderSubmenuOpen(true)}
+            onMouseLeave={() => setFolderSubmenuOpen(false)}
+          >
+            <button className="flex items-center justify-between w-full text-left px-3 py-1.5 text-[13px] text-[#333333] hover:bg-[#F0F0F0]">
+              <span className="flex items-center gap-2">
+                <FolderPlus size={14} />
+                Add to Folder
+              </span>
+              <span className="text-[#999999] text-[11px]">&#9654;</span>
+            </button>
+            {folderSubmenuOpen && (
+              <div className="absolute left-full top-0 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-50 py-1 min-w-[150px]">
+                {folders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => handleAddToFolder(folder.id)}
+                    className="block w-full text-left px-3 py-1 text-[13px] text-[#333333] hover:bg-[#F0F0F0]"
+                  >
+                    {folder.name}
+                  </button>
+                ))}
+                {folders.length > 0 && <div className="border-t border-[#E5E5E5] my-1" />}
+                <button
+                  onClick={handleCreateAndAdd}
+                  className="flex items-center gap-2 w-full text-left px-3 py-1 text-[13px] text-[#0063E1] hover:bg-[#F0F0F0]"
+                >
+                  <Plus size={14} />
+                  New Folder...
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

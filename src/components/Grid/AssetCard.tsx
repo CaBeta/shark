@@ -15,6 +15,8 @@ interface AssetCardProps {
   thumbnailPath?: string;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDragStart?: (e: React.DragEvent) => void;
 }
 
 export const AssetCard = React.memo(function AssetCard({
@@ -24,6 +26,8 @@ export const AssetCard = React.memo(function AssetCard({
   thumbnailPath,
   onClick,
   onDoubleClick,
+  onContextMenu,
+  onDragStart,
 }: AssetCardProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
@@ -47,12 +51,15 @@ export const AssetCard = React.memo(function AssetCard({
 
   return (
     <div
+      draggable
       className={`group relative flex flex-col rounded-md p-2 cursor-pointer transition-colors ${
         selected ? 'bg-[#EBF5FF]' : 'hover:bg-gray-50'
       }`}
       style={{ width: size }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+      onDragStart={onDragStart}
     >
       <div
         className={`relative aspect-square rounded-md overflow-hidden bg-gray-100 mb-2 border ${
